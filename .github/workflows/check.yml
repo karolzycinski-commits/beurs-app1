@@ -1,0 +1,16 @@
+name: 12-Uurlijkse Cross Check
+
+on:
+  schedule:
+    - cron: '0 9,21 * * 1-5' # Elke werkdag om 09:00 en 21:00 UTC (11:00 en 23:00 Belgische/Nederlandse tijd)
+  workflow_dispatch: # Maakt handmatig testen vanuit GitHub mogelijk
+
+jobs:
+  check-stocks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Controleer watchlist op kruisingen
+        run: |
+          curl -X POST "https://beurs-backend.onrender.com/api/controleer-crosses" \
+               -H "Content-Type: application/json" \
+               -d '{"tickers": ["JEDI.DE", "SPY", "AAPL", "MSFT"]}'

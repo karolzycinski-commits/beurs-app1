@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Beurs Watchlist & TradingView Grafiek</title>
+
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+
+    <!-- TradingView Lightweight Charts Bibliotheek -->
+    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 20px; background-color: #131722; color: #d1d4dc; }
+        .dashboard { display: flex; gap: 20px; max-width: 1400px; margin: 0 auto; flex-wrap: wrap; }
+        .sidebar { flex: 1; min-width: 280px; background: #1e222d; padding: 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        .main-panel { flex: 3; min-width: 340px; background: #1e222d; padding: 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        .input-group { display: flex; gap: 8px; margin-bottom: 20px; }
+        input[type="text"] { flex: 1; padding: 10px; border: 1px solid #2a2e39; background: #131722; color: #fff; border-radius: 4px; font-size: 14px; text-transform: uppercase; }
+        button { padding: 10px 16px; background-color: #2962ff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:hover { background-color: #1e53e5; }
+        .watchlist-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #2a2e39; cursor: pointer; }
+        .watchlist-item:hover { background-color: #2a2e39; }
+        .status-bullish { color: #00e676; font-weight: bold; background: rgba(0,230,118,0.1); padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+        .status-bearish { color: #ff5252; font-weight: bold; background: rgba(255,82,82,0.1); padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+        .btn-delete { background: none; border: none; color: #787b86; cursor: pointer; font-size: 16px; }
+        .btn-delete:hover { color: #ff5252; }
+        #chartContainer { width: 100%; height: 500px; margin-top: 15px; }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard">
+        <div class="sidebar">
+            <h2 style="margin-top:0;">Mijn Watchlist</h2>
+            <div class="input-group">
+                <input type="text" id="tickerInput" placeholder="Bijv. JEDI.DE, SPY, AAPL">
+                <button onclick="voegTickerToe()">+ Voeg toe</button>
+            </div>
+            <div id="watchlistLijst">Laden...</div>
+        </div>
+
+        <div class="main-panel">
+            <h2 id="grafiekTitel" style="margin-top:0;">Selecteer een aandeel</h2>
+            <div id="chartContainer"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = "http://127.0.0.1:8000";
+        let chart = null;
+        let candlestickSeries = null;
+        let sma50Series = null;
+        let sma200Series = null;
+
+        function haalGeheugenOp() {
+            const opgeslagen = localStorage.getItem("beurs_watchlist");
+            return opgeslagen ? JSON.parse(opgeslagen) : ["JEDI.DE", "SPY", "AAPL"];
+        }
+
+        function slaGeheugenOp(lijst) {
+            localStorage.setItem("beurs_watchlist", JSON.stringify(lijst));
+        }
+
+        function initialiseerTradingViewGrafiek() {
+            const container = document.getElementById('chartContainer');
+            container.innerHTML = '';
+
+            chart = LightweightCharts.createChart(container, {
+                width: container.clientWidth,
+                height: 500,
+                layout: {
+                    background: { color: '#131722' },
+                    textColor: '#d1d4dc',
+                },
+                grid: {
+                    vertLines: { color: '#1f2937' },
+                    horzLines: { color: '#1f2937' },
+                },
+                crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+                rightPriceScale: { borderColor: '#2B2B43' },
+                timeScale: { borderColor: '#2B2B43', timeVisible: true },
+            });
+
+            // Candlesticks (Groen / Rood)
+            candlestickSeries = chart.addCandlestickSeries({
+                upColor: '#089981', downColor: '#f23645',
+                borderVisible: false, wickUpColor: '#089981', wickDownColor: '#f23645'
+            });
+
+            // SMA 50 (Paars - zoals in Saxo/TradingView)
+            sma50Series = chart.addLineSeries({
+                color: '#e040fb',
+                lineWidth: 2,
+                title: 'SMA 50'
+            });
+
+            // SMA 200 (Geel/Goud - zoals in Saxo/TradingView)
+            sma200Series = chart.addLineSeries({
+                color: '#ffd600',
+                lineWidth: 2,
+                title: 'SMA 200'
+            });
+
+            window.addEventListener('resize', () => {
+                chart.applyOptions({ width: container.clientWidth });
+            });
+        }
+
+        async function verversWatchlist() {
+            const watchlist = haalGeheugenOp();
+            const container = document.getElementById("watchlistLijst");
+            container.innerHTML = "";
+
+            for (const ticker of watchlist) {
+                const itemDiv = document.createElement("div");
+                itemDiv.className = "watchlist-item";
+                itemDiv.onclick = () => laadGrafiek(ticker);
+
+                try {
+                    const response = await fetch(`${API_URL}/api/grafiek/${ticker}`);
+                    if (!response.ok) throw new Error();
+                    const data = await response.json();
+
+                    const statusBadge = data.is_bullish
+                        ? `<span class="status-bullish">📈 Bullish</span>`
+                        : `<span class="status-bearish">📉 Bearish</span>`;
+
+                    itemDiv.innerHTML = `
+                        <div>
+                            <strong>${data.ticker}</strong>
+                            <div style="font-size: 12px; color: #787b86;">€/$ ${data.laatste_koers}</div>
+                        </div>
+                        <div>
+                            ${statusBadge}
+                            <button class="btn-delete" onclick="event.stopPropagation(); verwijderTicker('${ticker}')">✕</button>
+                        </div>
+                    `;
+                } catch {
+                    itemDiv.innerHTML = `
+                        <div><strong>${ticker}</strong></div>
+                        <div style="color:#ff5252; font-size:12px;">Fout bij laden</div>
+                        <button class="btn-delete" onclick="event.stopPropagation(); verwijderTicker('${ticker}')">✕</button>
+                    `;
+                }
+
+                container.appendChild(itemDiv);
+            }
+        }
+
+        function voegTickerToe() {
+            const input = document.getElementById("tickerInput");
+            const ticker = input.value.trim().toUpperCase();
+            if (!ticker) return;
+
+            const lijst = haalGeheugenOp();
+            if (!lijst.includes(ticker)) {
+                lijst.push(ticker);
+                slaGeheugenOp(lijst);
+                verversWatchlist();
+            }
+            input.value = "";
+        }
+
+        function verwijderTicker(ticker) {
+            let lijst = haalGeheugenOp();
+            lijst = lijst.filter(t => t !== ticker);
+            slaGeheugenOp(lijst);
+            verversWatchlist();
+        }
+
+        async function laadGrafiek(ticker) {
+            document.getElementById("grafiekTitel").innerText = `Laden van ${ticker}...`;
+
+            try {
+                const response = await fetch(`${API_URL}/api/grafiek/${ticker}`);
+                const data = await response.json();
+
+                document.getElementById("grafiekTitel").innerText = `${data.ticker} - Interactive Candlestick & SMA's`;
+
+                if (!chart) initialiseerTradingViewGrafiek();
+
+                candlestickSeries.setData(data.candles);
+                sma50Series.setData(data.sma_50);
+                sma200Series.setData(data.sma_200);
+
+                chart.timeScale().fitContent();
+            } catch (err) {
+                document.getElementById("grafiekTitel").innerText = `Kon grafiek voor ${ticker} niet laden.`;
+            }
+        }
+
+        initialiseerTradingViewGrafiek();
+        verversWatchlist();
+    </script>
+</body>
+</html>

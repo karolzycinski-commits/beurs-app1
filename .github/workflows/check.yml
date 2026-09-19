@@ -2,7 +2,6 @@ name: 6-Uurlijkse Cross Check
 
 on:
   schedule:
-    # Draait om 00:00, 06:00, 12:00 en 18:00 UTC op werkdagen (ma t/m vr)
     - cron: '0 */6 * * 1-5'
   workflow_dispatch:
 
@@ -11,7 +10,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Controleer watchlist op kruisingen
-        run: |
-          curl -X POST "https://beurs-backend.onrender.com/api/controleer-crosses" \
-               -H "Content-Type: application/json" \
-               -d '{"tickers": ["HEAL.MI", "BATT.MI", "RBOD.L", "EIMI.MI", "JEDI.DE", "URNU.DE", "IH2O.MI", "PHPM.AS", "CIBR.MI", "COPX.MI", "4COP.DE", "U308.DE", "GOAI.DE", "RBOT.MI", "XAIX.DE", "WQTM.DE", "NDIA.AS", "ITWN.AS", "FLXK.DE", "ITKY.AS", "SRSA.MI", "XFVT.DE", "RIO.PA"]}'
+        run: curl --retry 3 --retry-delay 10 --max-time 180 -X POST "https://beurs-backend.onrender.com/api/controleer-crosses" -H "Content-Type: application/json" -d '{"tickers":["HEAL.MI","BATT.MI","RBOD.L","EIMI.MI","JEDI.DE","URNU.DE","IH2O.MI","PHPM.AS","CIBR.MI","COPX.MI","4COP.DE","U308.DE","GOAI.DE","RBOT.MI","XAIX.DE","WQTM.DE","NDIA.AS","ITWN.AS","FLXK.DE","ITKY.AS","SRSA.MI","XFVT.DE","RIO.PA"]}'
